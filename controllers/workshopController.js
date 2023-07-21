@@ -1,0 +1,140 @@
+const SSLCommerzPayment = require('sslcommerz-lts')
+const { createDoc, readDoc, readOneDoc, updateDoc } = require("../utils/mongoQueries")
+const { usersCollection, workshopsCollection, workshopModulesCollection } = require("../mongoDBConfig/collections")
+const { ObjectId } = require('mongodb')
+
+const store_id = process.env.SSLCOMMERZ_STORE_ID
+const store_passwd = process.env.SSLCOMMERZ_STORE_PASS
+const server = process.env.SERVER
+const is_live = true
+
+
+const getAllWorkshop = async (req, res) => {
+    const { status } = req.query
+    if (status) {
+        const result = await workshopsCollection().find({ status }).toArray()
+        return res.send(result)
+    }
+    const result = await readDoc(workshopsCollection)
+    res.send(result)
+}
+
+const getAWorkshops = async (req, res) => {
+    const result = await readOneDoc(req, workshopsCollection)
+    res.send(result)
+}
+
+const updateWorkshops = async (req, res) => {
+    // const { isPublished } = req.body
+    const result = await updateDoc(req, workshopsCollection)
+    res.send(result)
+}
+
+const saveWorkshop = async (req, res) => {
+    const result = await createDoc(req, workshopsCollection)
+    res.send(result)
+}
+
+const saveWorkshopModule = async (req, res) => {
+    const result = await createDoc(req, workshopModulesCollection)
+    res.send(result)
+}
+
+const getWorkshopContent = async (req, res) => {
+    const id = req.params.id;
+    const result = await workshopsCollection().findOne({ _id: new ObjectId(id) })
+    res.send(result)
+}
+
+// workshop Payment
+const makeWorkshopPayment = async (req, res) => {
+    const user = await usersCollection().findOne({ uid: req.query.uid })
+    const amount = (await workshopsCollection().findOne({ _id: new ObjectId(req.query.workshopId) }))?.price
+
+    if (user && amount) {
+        const data = {
+            total_amount: amount,
+            currency: 'BDT',
+            tran_id: (new Date()).getTime(), // use unique tran_id for each api call
+            success_url: `${server}/workshops/payment/success`,
+            fail_url: `${server}/workshops/payment/failure`,
+            cancel_url: `${server}/workshops/payment/cancel`,
+            ipn_url: `${server}/workshops/payment/ipn`,
+            cus_name: user.name,
+            cus_email: user.email,
+            cus_phone: user.phone,
+        }
+
+        const sslcz = new SSLCommerzPayment(store_id, store_passwd, is_live)
+
+        sslcz.init(data).then(apiResponse => {
+            data.uid = user.uid
+            data.workshopId = req.query.workshopId
+            req.app.set("data", data)
+            let GatewayPageURL = apiResponse.GatewayPageURL
+            res.redirect(GatewayPageURL)
+        })
+    } else {
+        res.send({})
+    }
+}
+
+const workshopPaymentSuccess = async (req, res) => {
+
+    const { tran_id } = req.app.get('data')
+    const data = {
+        tran_id,
+        status: "success"
+    }
+    const result = await usersCollection().updateOne(
+        { uid: req.app.get('data').uid },
+        {
+            $push: {
+                enrolledWorkshops: {
+                    id: req.app.get('data').workshopId,
+                    completed: 0
+                }
+            }
+        }
+    )
+    const queryString = Object.keys(data).map(key => key + '=' + data[key]).join('&')
+    res.redirect(`https://learnwithrakib.pro/upcomingdetails?${queryString}`)
+}
+
+const workshopPaymentFailure = async (req, res) => {
+    res.redirect("https://learnwithrakib.pro/upcomingdetails?status=failure")
+}
+
+const workshopPaymentCancel = async (req, res) => {
+    res.redirect("https://learnwithrakib.pro/upcomingdetails?status=cancelled")
+}
+
+const workshopPaymentIpn = async (req, res) => {
+    res.redirect("https://learnwithrakib.pro/upcomingdetails?status=ipn")
+}
+
+const completeWorkshop = async (req, res) => {
+    console.log(req.query);
+    const { uid, workshopId } = req.query
+    const result = await usersCollection().updateOne(
+        { uid, "enrolledWorkshops.id": workshopId },
+        { $set: { 'enrolledWorkshops.$.completed': 100 } }
+    )
+    res.send(result)
+}
+
+
+module.exports = {
+    saveWorkshop,
+    saveWorkshopModule,
+    makeWorkshopPayment,
+    workshopPaymentSuccess,
+    workshopPaymentFailure,
+    workshopPaymentCancel,
+    workshopPaymentIpn,
+    getAllWorkshop,
+    getAWorkshops,
+    getWorkshopContent,
+    updateWorkshops,
+    completeWorkshop,
+}

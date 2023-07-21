@@ -1,0 +1,87 @@
+const { usersCollection } = require("../mongoDBConfig/collections")
+const { readDoc, createDoc, updateDoc, deleteDoc, readOneDoc } = require("../utils/mongoQueries")
+
+const getAllUsers = async (req, res) => {
+    const users = await readDoc(usersCollection)
+    // const r = await usersCollection().updateMany({ paidPremium: true }, {
+    //     $set: {
+    //         enrolledCourses: [
+    //             {
+    //                 id: "645ff25bde9557c4b0ab4afb",
+    //                 completed: 0
+    //             }
+    //         ]
+    //     }
+    // })
+    res.send(users)
+}
+
+const getAllPaidUsers = async (req, res) => {
+    const users = await usersCollection().find({ paidPremium: true }).toArray()
+    res.send(users)
+}
+
+const saveUser = async (req, res) => {
+    const result = await createDoc(req, usersCollection)
+    res.send(result)
+}
+
+const updateUser = async (req, res) => {
+    const result = await updateDoc(req, usersCollection)
+    res.send(result)
+}
+const updateUserByUid = async (req, res) => {
+    const result = await usersCollection().updateOne(
+        {
+            uid: req.query.uid
+        },
+        {
+            $set: req.body
+        }
+    )
+
+    res.send(result)
+}
+
+const deleteUser = async (req, res) => {
+    const result = await deleteDoc(req, usersCollection)
+
+    res.send(result)
+}
+
+const getAUser = async (req, res) => {
+    const result = await readOneDoc(req, usersCollection)
+
+    res.send(result || {})
+}
+const getAUserByUid = async (req, res) => {
+    const query = req.query.downloadDate ? { downloadDate: req.query.downloadDate } : req.query.uid ? { uid: req.query.uid } : { [Object.keys(req.query)[0]]: [req.query[Object.keys(req.query)[0]]] }
+    const result = await usersCollection().findOne(query)
+
+    res.send(result || {})
+}
+
+// const getPaidPremium = async (req, res) => {
+//     // let query = {}
+//     // if (req.query.paidPremium) {
+//     //     query = {
+//     //         paidPremium: req.query.paidPremium
+//     //     }
+//     // };
+//     // const cursor = await usersCollection().find(query).toArray()
+//     // // const result = await cursor.toArray();
+//     // res.send(cursor)
+//     const email = req.query.email;
+//     const query = { email: paidPremium }
+// }
+
+module.exports = {
+    getAllUsers,
+    saveUser,
+    updateUser,
+    deleteUser,
+    getAUser,
+    getAUserByUid,
+    updateUserByUid,
+    getAllPaidUsers,
+}
